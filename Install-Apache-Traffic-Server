@@ -1,0 +1,63 @@
+# Create the compilation environment and install required packages
+sudo yum groupinstall "Development Tools" -y
+sudo yum install wget pcre-devel tcl-devel expat-devel openssl-devel libcap-devel hwloc hwloc-devel ncurses-devel libcurl-devel -y
+
+# Download trafficserver
+cd /usr/src
+sudo wget $url
+
+# Verify md5
+# https://www.apache.org/dist/trafficse...
+md5sum trafficserver-7.0.0.tar.bz2
+sudo tar xjvf trafficserver-7.0.0.tar.bz2
+cd trafficserver-7.0.0
+
+# Add group/user to run the service
+sudo groupadd -g 176 trafficserver
+sudo useradd -g 176 -u 176 -d /var/empty -s /sbin/nologin trafficserver
+
+# Compile trafficserver
+sudo ./configure --prefix=/opt/ts --with-group=trafficserver --with-user=trafficserver
+sudo make
+sudo make install
+
+# Create systemd script
+sudo vi /lib/systemd/system/trafficserver.service
+#Add
+[Unit]
+Description=Apache Traffic Server
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/ts/bin/traffic_cop
+ExecReload=/opt/ts/bin/traffic_line -x
+
+[Install]
+WantedBy=multi-user.target
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Configure trafficserver
+cd /opt/ts/etc/trafficserver/
+sudo vi records.config
+
+# Enable these options
+CONFIG proxy.config.http.cache.http INT 1
+CONFIG proxy.config.reverse_proxy.enabled INT 1
+CONFIG proxy.config.url_remap.remap_required INT 1
+CONFIG proxy.config.url_remap.pristine_host_hdr INT 1
+CONFIG proxy.config.http.server_ports STRING 80 80:ipv6
+
+# Configure trafficserver with the origin server
+sudo vi remap.config
+map http://www.frostwolfs.org http://internal.frostwolfs.org
+
+# Increase the cache size
+sudo vi storage.config
+#Add
+var/trafficserver 5G
+
+# Start the service
+sudo systemctl start trafficserver
